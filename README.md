@@ -16,6 +16,7 @@ Drop autotracker.py to blender/scripts/addons/ folder or use User Preferences --
 Motion tracking --> Autotrack panel  
 ![alt tag](https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_interface.jpg)
 * Autotrack: Starts Autotracking.
+* Track Backwards: When enabled autotracker tracks backwards.
 * New Marker Threshold: How Close Are New Markers Allowed To Be Created (0-1).
 * Frame Separation: Make New Markers Every Nth Frame
 * Jump Threshold: How Much Tracks Can Jump Before They Are Muted (0-1).
