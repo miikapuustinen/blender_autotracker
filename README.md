@@ -13,7 +13,7 @@ Drop autotracker.py to blender/scripts/addons/ folder or use User Preferences --
 
 
 ###Settings
-Motion tracking --> Autotrack panel
+Motion tracking --> Autotrack panel  
 ![alt tag](https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_interface.jpg)
 * Autotrack: Starts Autotracking.
 * New Marker Threshold: How Close Are New Markers Allowed To Be Created (0-1).
