@@ -2,10 +2,13 @@
 
 ###What is it?
 Addon which introduces autotracking for Blender motion tracking. It automates marker creationg and feature detection, as well tries to cut down amount of bad tracks.
+![alt tag]https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_screenshot.jpg
+
 ###How to install?
 Drop autotracker.py to blender/scripts/addons/ folder or use User Preferences --> Add-ons Install from file to install.
 
 ###How to use?
+![alt tag]https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_interface.jpg
 * AUTOTRACK: Starts autotracking.
 * NEW MARKER THRESHOLD: How close are new markers allowed to be created.
 * FRAME SEPARATION: Make new markers every nth frame
