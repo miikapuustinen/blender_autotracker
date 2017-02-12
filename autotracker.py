@@ -1,12 +1,12 @@
 bl_info = {
     "name": "Autotrack",
     "author": "Miika Puustinen, Matti Kaihola",
-    "version": (0, 8),
+    "version": (0, 0, 9),
     "blender": (2, 78, 0),
     "location": "Movie clip Editor > Tools Panel > Autotrack",
     "description": "Motion Tracking with automatic feature detection.",
     "warning": "",
-    "wiki_url": "",
+    "wiki_url": "https://github.com/miikapuustinen/blender_autotracker",
     "category": "Motion Tracking",
     }
 
@@ -15,7 +15,7 @@ import bpy
 import math
 
 
-class ModalTimerOperator(bpy.types.Operator):
+class AutotrackerOperator(bpy.types.Operator):
     """Autotrack. Esc to cancel."""
     bl_idname = "wm.modal_timer_operator"
     bl_label = "Modal Timer Operator"
@@ -61,7 +61,7 @@ class ModalTimerOperator(bpy.types.Operator):
                 i_marker = i.markers.find_frame(current_frame)
                 j_marker = j.markers.find_frame(current_frame)
                 distance = math.sqrt(((i_marker.co[0] - j_marker.co[0])**2) + ((i_marker.co[1] - j_marker.co[1])**2))
-                # print(distance)
+
                 if distance < delete_threshold:
                     to_delete.append(i)
                     break
@@ -118,23 +118,13 @@ class ModalTimerOperator(bpy.types.Operator):
                     current_frame = bpy.context.scene.frame_current
 
                     if (i.markers.find_frame(current_frame) is not None and
-                       i.markers.find_frame(current_frame - one_frame) is not None and
+                        i.markers.find_frame(current_frame - one_frame) is not None and
                        i.markers.find_frame(current_frame - two_frames) is not None):
-
-                        key_frame = i.markers.find_frame(current_frame).co.normalized()
-                        prev_frame = i.markers.find_frame(current_frame - one_frame).co.normalized()
-                        origo_frame = i.markers.find_frame(current_frame - two_frames).co.normalized()
-
-                        a = (key_frame - origo_frame).normalized()
-                        b = (prev_frame - origo_frame).normalized()
-                        angle = abs(math.degrees(math.atan2(b[1], b[0]) - math.atan2(a[1], a[0])))
-                        # print('angle is {}'.format(angle))
 
                         key_frame = i.markers.find_frame(current_frame).co
                         prev_frame = i.markers.find_frame(current_frame - one_frame).co
-
                         distance = math.sqrt(((key_frame[0] - prev_frame[0])**2) + ((key_frame[1] - prev_frame[1])**2))
-
+                        # Jump Cut threshold
                         if distance > jump_cut:
                             if (i.markers.find_frame(current_frame) is not None and
                                i.markers.find_frame(current_frame - one_frame) is not None):
@@ -145,13 +135,6 @@ class ModalTimerOperator(bpy.types.Operator):
                                 new_track.markers[0].co = i.markers.find_frame(current_frame).co
                                 i.markers.find_frame(current_frame).mute = True
                                 i.markers.find_frame(current_frame - one_frame).mute = True
-                        if angle_cut > 0 or angle_cut < 360:
-                            if angle > angle_cut:
-                                if (i.markers.find_frame(current_frame) is not None and
-                                   i.markers.find_frame(current_frame - one_frame) is not None):
-
-                                    i.markers.find_frame(current_frame).mute = True
-                                    i.markers.find_frame(current_frame - one_frame).mute = True
 
     def modal(self, context, event):
         scene = bpy.context.scene
@@ -259,9 +242,6 @@ class tracking_autotracker(bpy.types.Panel):
         row.prop(context.scene, "jump_cut", text="Jump Threshold")
 
         row = layout.row(align=True)
-        row.prop(context.scene, "angle_cut", text="Angle Threshold")
-
-        row = layout.row(align=True)
         row.label(text="Detect Features Settings:")
 
         row = layout.row(align=True)
@@ -330,15 +310,6 @@ class AutotrackerSettings(bpy.types.PropertyGroup):
             max=1.0
     )
 
-    angle_cut = bpy.props.IntProperty(
-            name="Angle Cut",
-            description="*EXPIRIMENTAL* Angle how much a tracker can turn before "
-                        "it is concidered to be a bad track and being muted.",
-            default=360,
-            min=0,
-            max=360
-            )
-
     track_backwards = bpy.props.BoolProperty(
             name="AutoTrack Backwards",
             description="Autotrack backwards.",
@@ -361,7 +332,7 @@ class AutotrackerSettings(bpy.types.PropertyGroup):
 
 # REGISTER BLOCK #
 def register():
-    bpy.utils.register_class(ModalTimerOperator)
+    bpy.utils.register_class(AutotrackerOperator)
     bpy.utils.register_class(tracking_autotracker)
     bpy.utils.register_class(AutotrackerSettings)
 
@@ -370,7 +341,7 @@ def register():
 
 
 def unregister():
-    bpy.utils.unregister_class(ModalTimerOperator)
+    bpy.utils.unregister_class(AutotrackerOperator)
     bpy.utils.unregister_class(tracking_autotracker)
     bpy.utils.unregister_class(AutotrackerSettings)
 
