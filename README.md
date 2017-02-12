@@ -1,7 +1,7 @@
 ##Blender Autotracker addon
 
 ###What is it?
-Addon which introduces autotracking for Blender motion tracking. It automates marker creationg and feature detection, as well tries to cut down amount of bad tracks.
+Blender addon which introduces autotracking for motion tracking. It automates marker creationg and feature detection, as well tries to cut down amount of bad tracks.
 ![test tag](https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_screenshot.jpg)
 
 ###How to install?
