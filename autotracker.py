@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Autotrack",
     "author": "Miika Puustinen, Matti Kaihola",
-    "version": (0, 0, 9),
+    "version": (0, 0, 95),
     "blender": (2, 78, 0),
     "location": "Movie clip Editor > Tools Panel > Autotrack",
     "description": "Motion Tracking with automatic feature detection.",
@@ -39,10 +39,10 @@ class AutotrackerOperator(bpy.types.Operator):
 
         # Detect Features
         bpy.ops.clip.detect_features(
-            threshold=bpy.context.scene.df_threshold,
-            min_distance=bpy.context.scene.df_distance,
-            margin=bpy.context.scene.df_margin,
-            placement=bpy.context.scene.placement_list
+            threshold=bpy.context.scene.autotracker_props.df_threshold,
+            min_distance=bpy.context.scene.autotracker_props.df_distance,
+            margin=bpy.context.scene.autotracker_props.df_margin,
+            placement=bpy.context.scene.autotracker_props.placement_list
             )
 
         current_frame = bpy.context.scene.frame_current
@@ -100,7 +100,7 @@ class AutotrackerOperator(bpy.types.Operator):
         bpy.ops.clip.track_markers(backwards=False, sequence=False)
 
     # REMOVE BAD MARKERS
-    def remove_extra(self, angle_cut, jump_cut, track_backwards):
+    def remove_extra(self, jump_cut, track_backwards):
         trackers = []
 
         if track_backwards is True:
@@ -147,16 +147,15 @@ class AutotrackerOperator(bpy.types.Operator):
         if event.type == 'TIMER':
 
             # PROP VARIABLES
-            delete_threshold = bpy.context.scene.delete_threshold
+            delete_threshold = bpy.context.scene.autotracker_props.delete_threshold
             endframe = bpy.context.scene.frame_end
             start_frame = bpy.context.scene.frame_start
-            frame_separate = bpy.context.scene.frame_separation
-            margin = bpy.context.scene.df_margin
-            distance = bpy.context.scene.df_distance
-            threshold = bpy.context.scene.df_threshold
-            angle_cut = bpy.context.scene.angle_cut
-            jump_cut = bpy.context.scene.jump_cut
-            track_backwards = bpy.context.scene.track_backwards
+            frame_separate = bpy.context.scene.autotracker_props.frame_separation
+            margin = bpy.context.scene.autotracker_props.df_margin
+            distance = bpy.context.scene.autotracker_props.df_distance
+            threshold = bpy.context.scene.autotracker_props.df_threshold
+            jump_cut = bpy.context.scene.autotracker_props.jump_cut
+            track_backwards = bpy.context.scene.autotracker_props.track_backwards
 
             # Auto features every frame separate step
             if bpy.context.scene.frame_current % frame_separate == 0 or self.limits == 0:
@@ -192,7 +191,7 @@ class AutotrackerOperator(bpy.types.Operator):
                     self.track_frames_forward()
 
             # Remove bad tracks
-            self.remove_extra(angle_cut, jump_cut, track_backwards)
+            self.remove_extra(jump_cut, track_backwards)
 
             self.limits += 1
 
@@ -211,7 +210,7 @@ class AutotrackerOperator(bpy.types.Operator):
 
 # UI CREATION #
 
-class tracking_autotracker(bpy.types.Panel):
+class Autotracker_UI(bpy.types.Panel):
     """Creates a Panel in the Render Layer properties window"""
     bl_label = "Autotrack"
     bl_idname = "autotrack"
@@ -225,46 +224,45 @@ class tracking_autotracker(bpy.types.Panel):
 
         row = layout.row(align=True)
         row.scale_y = 1.5
-        # props = row.operator("clip.track_markers", text="Backwards",icon='PLAY_REVERSE')
 
         props = row.operator("wm.modal_timer_operator", text="Autotrack!     ", icon='PLAY')
 
         row = layout.row(align=True)
-        row.prop(context.scene, "track_backwards")
+        row.prop(context.scene.autotracker_props, "track_backwards")
 
         row = layout.row(align=True)  # make next row
-        row.prop(context.scene, "delete_threshold")
+        row.prop(context.scene.autotracker_props, "delete_threshold")
 
         row = layout.row(align=True)
-        row.prop(context.scene, "frame_separation", text="Frame Separation")
+        row.prop(context.scene.autotracker_props, "frame_separation", text="Frame Separation")
 
         row = layout.row(align=True)
-        row.prop(context.scene, "jump_cut", text="Jump Threshold")
+        row.prop(context.scene.autotracker_props, "jump_cut", text="Jump Threshold")
 
         row = layout.row(align=True)
         row.label(text="Detect Features Settings:")
 
         row = layout.row(align=True)
-        row.prop(context.scene, "df_margin", text="Margin:")
+        row.prop(context.scene.autotracker_props, "df_margin", text="Margin:")
 
         row = layout.row(align=True)
-        row.prop(context.scene, "df_threshold", text="Threshold:")
+        row.prop(context.scene.autotracker_props, "df_threshold", text="Threshold:")
 
         row = layout.row(align=True)
-        row.prop(context.scene, "df_distance", text="Distance:")
+        row.prop(context.scene.autotracker_props, "df_distance", text="Distance:")
 
         row = layout.row(align=True)
-        row.label(text="Detect Features Settings:")
+        row.label(text="Feature Placement:")
 
-        row = layout.row(align=True)  # make next row
-        row.prop(context.scene, "placement_list")
+        row = layout.row(align=True)
+        row.prop(context.scene.autotracker_props, "placement_list")
 
 
 class AutotrackerSettings(bpy.types.PropertyGroup):
     """Create properties"""
     df_margin = bpy.props.IntProperty(
             name="Detect Features Margin",
-            description="Only features further margin pixels from the image edges are concidered.",
+            description="Only features further margin pixels from the image edges are considered.",
             default=16,
             min=0,
             max=2000
@@ -303,7 +301,7 @@ class AutotrackerSettings(bpy.types.PropertyGroup):
 
     jump_cut = bpy.props.FloatProperty(
             name="Jump Cut",
-            description="Distance how much a marker can travel before it is concidered "
+            description="Distance how much a marker can travel before it is considered "
                         "to be a bad track and cut. A new track is added.",
             default=0.1,
             min=0.0,
@@ -333,7 +331,7 @@ class AutotrackerSettings(bpy.types.PropertyGroup):
 # REGISTER BLOCK #
 def register():
     bpy.utils.register_class(AutotrackerOperator)
-    bpy.utils.register_class(tracking_autotracker)
+    bpy.utils.register_class(Autotracker_UI)
     bpy.utils.register_class(AutotrackerSettings)
 
     bpy.types.Scene.autotracker_props = \
@@ -342,7 +340,7 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(AutotrackerOperator)
-    bpy.utils.unregister_class(tracking_autotracker)
+    bpy.utils.unregister_class(Autotracker_UI)
     bpy.utils.unregister_class(AutotrackerSettings)
 
 
