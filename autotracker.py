@@ -1,3 +1,21 @@
+# ##### BEGIN GPL LICENSE BLOCK #####
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software Foundation,
+#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# ##### END GPL LICENSE BLOCK #####
+
 bl_info = {
     "name": "Autotrack",
     "author": "Miika Puustinen, Matti Kaihola",
@@ -13,6 +31,8 @@ bl_info = {
 
 import bpy
 import math
+from timeit import default_timer as timer
+
 
 
 class AutotrackerOperator(bpy.types.Operator):
@@ -21,7 +41,7 @@ class AutotrackerOperator(bpy.types.Operator):
     bl_label = "Modal Timer Operator"
 
     limits = bpy.props.IntProperty(default=0)
-    _timer = None
+    #_timer = None
 
     def active_clip(self):
         area = [i for i in bpy.context.screen.areas if i.type == 'CLIP_EDITOR'][0]
@@ -65,7 +85,7 @@ class AutotrackerOperator(bpy.types.Operator):
                 if distance < delete_threshold:
                     to_delete.append(i)
                     break
-
+      
         # delete short tracks
         for track in tracks:
             muted = []
@@ -87,14 +107,13 @@ class AutotrackerOperator(bpy.types.Operator):
         for track in tracks:
             if track in to_delete:
                 track.select = True
-
         bpy.ops.clip.delete_track()
 
         print(str(len(selected)) + "/" + str(len(tracks)) + " tracks tracking.")
-
     # AUTOTRACK FRAMES
     def track_frames_backward(self):
         bpy.ops.clip.track_markers(backwards=True, sequence=False)
+
 
     def track_frames_forward(self):
         bpy.ops.clip.track_markers(backwards=False, sequence=False)
@@ -102,6 +121,8 @@ class AutotrackerOperator(bpy.types.Operator):
     # REMOVE BAD MARKERS
     def remove_extra(self, jump_cut, track_backwards):
         trackers = []
+        trackers = bpy.data.movieclips[self.active_clip()].tracking.tracks
+        current_frame = bpy.context.scene.frame_current
 
         if track_backwards is True:
             one_frame = -1
@@ -109,103 +130,105 @@ class AutotrackerOperator(bpy.types.Operator):
         else:
             one_frame = 1
             two_frames = 2
+            
+        for i in trackers:
+            if len(i.markers) > 3: 
+                if (i.markers.find_frame(current_frame) is not None and
+                    i.markers.find_frame(current_frame - one_frame) is not None and
+                   i.markers.find_frame(current_frame - two_frames) is not None):
 
-        if self.limits >= 3:
-            trackers = bpy.data.movieclips[self.active_clip()].tracking.tracks
+                    key_frame = i.markers.find_frame(current_frame).co
+                    prev_frame = i.markers.find_frame(current_frame - one_frame).co
+                    distance = math.sqrt(((key_frame[0] - prev_frame[0])**2) + ((key_frame[1] - prev_frame[1])**2))
+                    # Jump Cut threshold
+                    if distance > jump_cut:
+                        """
+                        if (i.markers.find_frame(current_frame) is not None and
+                           i.markers.find_frame(current_frame - one_frame) is not None):
+                        """
 
-            for i in trackers:
-                if len(i.markers) > 5:
-                    current_frame = bpy.context.scene.frame_current
-
-                    if (i.markers.find_frame(current_frame) is not None and
-                        i.markers.find_frame(current_frame - one_frame) is not None and
-                       i.markers.find_frame(current_frame - two_frames) is not None):
-
-                        key_frame = i.markers.find_frame(current_frame).co
-                        prev_frame = i.markers.find_frame(current_frame - one_frame).co
-                        distance = math.sqrt(((key_frame[0] - prev_frame[0])**2) + ((key_frame[1] - prev_frame[1])**2))
-                        # Jump Cut threshold
-                        if distance > jump_cut:
-                            if (i.markers.find_frame(current_frame) is not None and
-                               i.markers.find_frame(current_frame - one_frame) is not None):
-
-                                # create new track to new pos
-                                new_track = \
-                                    bpy.data.movieclips[self.active_clip()].tracking.tracks.new(frame=current_frame)
-                                new_track.markers[0].co = i.markers.find_frame(current_frame).co
-                                i.markers.find_frame(current_frame).mute = True
-                                i.markers.find_frame(current_frame - one_frame).mute = True
+                            # create new track to new pos
+                        new_track = \
+                            bpy.data.movieclips[self.active_clip()].tracking.tracks.new(frame=current_frame)
+                        new_track.markers[0].co = i.markers.find_frame(current_frame).co
+                        i.markers.find_frame(current_frame).mute = True
+                        #i.markers.find_frame(current_frame - one_frame).mute = True
 
     def modal(self, context, event):
         scene = bpy.context.scene
+        # PROP VARIABLES
+        delete_threshold = scene.autotracker_props.delete_threshold
+        endframe = scene.frame_end
+        start_frame = scene.frame_start
+        frame_separate = scene.autotracker_props.frame_separation
+        margin = scene.autotracker_props.df_margin
+        distance = scene.autotracker_props.df_distance
+        threshold = scene.autotracker_props.df_threshold
+        jump_cut = scene.autotracker_props.jump_cut
+        track_backwards = scene.autotracker_props.track_backwards
+
         if (event.type in {'ESC'} or scene.frame_current == scene.frame_end + 1 or
            scene.frame_current == scene.frame_start - 1):
             self.limits = 0
             self.cancel(context)
             return {'FINISHED'}
 
-        if event.type == 'TIMER':
+        #if event.type == 'TIMER':
+        # Auto features every frame separate step
+        start = timer()        
+        if bpy.context.scene.frame_current % frame_separate == 0 or self.limits == 0:
+            limits = self.limits
 
-            # PROP VARIABLES
-            delete_threshold = bpy.context.scene.autotracker_props.delete_threshold
-            endframe = bpy.context.scene.frame_end
-            start_frame = bpy.context.scene.frame_start
-            frame_separate = bpy.context.scene.autotracker_props.frame_separation
-            margin = bpy.context.scene.autotracker_props.df_margin
-            distance = bpy.context.scene.autotracker_props.df_distance
-            threshold = bpy.context.scene.autotracker_props.df_threshold
-            jump_cut = bpy.context.scene.autotracker_props.jump_cut
-            track_backwards = bpy.context.scene.autotracker_props.track_backwards
+            self.auto_features(delete_threshold, limits)
 
-            # Auto features every frame separate step
-            if bpy.context.scene.frame_current % frame_separate == 0 or self.limits == 0:
-                limits = self.limits
-                self.auto_features(delete_threshold, limits)
+        # Select all trackers for tracking
+        bpy.ops.clip.select_all(action='SELECT')
+        tracks = bpy.data.movieclips[self.active_clip()].tracking.tracks
+        active_tracks = []
 
-            # Select all trackers for tracking
-            select_all = bpy.ops.clip.select_all(action='SELECT')
-            tracks = bpy.data.movieclips[self.active_clip()].tracking.tracks
-            active_tracks = []
-            for track in tracks:
-                if track.lock is True:
-                    track.select = False
-                else:
-                    active_tracks.append(track)
-
-            # Forwards or backwards tracking
-            if track_backwards is True:
-                if len(active_tracks) == 0:
-                    print("No new tracks created. Doing nothing.")
-                    self.limits = 0
-                    self.cancel(context)
-                    return {'FINISHED'}
-                else:
-                    self.track_frames_backward()
+        # Don't track locked or hidden tracks
+        for track in tracks:
+            if track.lock is True:
+                track.select = False
             else:
-                if len(active_tracks) == 0:
-                    print("No new tracks created. Doing nothing.")
-                    self.limits = 0
-                    self.cancel(context)
-                    return {'FINISHED'}
-                else:
-                    self.track_frames_forward()
+                active_tracks.append(track)
 
-            # Remove bad tracks
+        # Forwards or backwards tracking
+        if track_backwards is True:
+            if len(active_tracks) == 0:
+                print("No new tracks created. Doing nothing.")
+                self.limits = 0
+                self.cancel(context)
+                return {'FINISHED'}
+            else:
+                self.track_frames_backward()
+        else:
+            if len(active_tracks) == 0:
+                print("No new tracks created. Doing nothing.")
+                self.limits = 0
+                self.cancel(context)
+                return {'FINISHED'}
+            else:
+                self.track_frames_forward()
+
+        # Remove bad tracks
+        if self.limits >= 3:
             self.remove_extra(jump_cut, track_backwards)
 
-            self.limits += 1
 
+        self.limits += 1
+        
         return {'PASS_THROUGH'}
 
     def execute(self, context):
         wm = context.window_manager
-        self._timer = wm.event_timer_add(time_step=0.5, window=context.window)
+        #self._timer = wm.event_timer_add(time_step=0.00001, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def cancel(self, context):
         wm = context.window_manager
-        wm.event_timer_remove(self._timer)
+        #wm.event_timer_remove(self._timer)
 
 
 # UI CREATION #
@@ -323,7 +346,7 @@ class AutotrackerSettings(bpy.types.PropertyGroup):
 
     placement_list = bpy.props.EnumProperty(
             name="",
-            description="Feaure Placement",
+            description="Feature Placement",
             items=list_items
             )
 
