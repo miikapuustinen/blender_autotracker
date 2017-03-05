@@ -63,6 +63,7 @@ class OP_Tracking_pick_frames(Operator):
         find the 12 longest tracks start and end
     """
     def pick_keyframes(self, context):
+        scene = context.scene
         clip = context.area.spaces.active.clip
         tracking = clip.tracking
         tracks = tracking.tracks
