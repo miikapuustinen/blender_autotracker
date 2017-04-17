@@ -19,7 +19,7 @@
 bl_info = {
     "name": "Autotrack",
     "author": "Miika Puustinen, Matti Kaihola, Stephen Leger",
-    "version": (0, 0, 97),
+    "version": (0, 0, 98),
     "blender": (2, 78, 0),
     "location": "Movie clip Editor > Tools Panel > Autotrack",
     "description": "Motion Tracking with automatic feature detection.",
@@ -104,189 +104,6 @@ def draw_callback(self, context):
     self.gl.ProgressBar(10, 24, 200, 16, self.start, self.progress)
     self.gl.String(str(int(100*abs(self.progress)))+"%", 14, 28, 10, self.gl.white)
     
-class OP_Tracking_pick_frames(Operator):
-    """Find longest tracks and setup frames for reconstruction"""
-    bl_idname = "tracking.pick_frames"  
-    bl_label = "Pick frames"
-    bl_options = {"UNDO"}
-    
-    def find_track_start(self, track):
-        for m in track.markers:
-            if not m.mute:
-                return m.frame
-        return track.markers[0].frame
-        
-    def find_track_end(self, track):
-        for m in reversed(track.markers):
-            if not m.mute:
-                return m.frame
-        return track.markers[-1].frame-1
-        
-    def find_track_length(self, track):
-        tstart = self.find_track_start(track)
-        tend   = self.find_track_end(track)
-        return tend-tstart
-    """
-        find the 12 longest tracks start and end
-    """
-    def pick_keyframes(self, context):
-        scene = context.scene
-        clip = context.area.spaces.active.clip
-        tracking = clip.tracking
-        tracks = tracking.tracks
-        longest_tracks = []
-        tracks_list  = [track for track in tracks]
-        track_length = [self.find_track_length(track) for track in tracks]
-        for i in range(12):
-            index = track_length.index(max(track_length))    
-            longest_tracks.append(tracks_list[index])
-            tracks_list.pop(index)
-            track_length.pop(index)
-        tracks_start = [self.find_track_start(track) for track in longest_tracks]
-        tracks_end   = [self.find_track_end(track) for track in longest_tracks]
-        tracks_end.append(scene.frame_end-1)
-        tracks_start.append(scene.frame_start+1)
-        keyframe_a = max(tracks_start)
-        keyframe_b = min(tracks_end)
-        delta = keyframe_b-keyframe_a
-        if delta > 20:
-            keyframe_a += int(delta / 4)
-            keyframe_b -= int(delta / 4)
-        tracking.objects.active.keyframe_a = keyframe_a
-        tracking.objects.active.keyframe_b = keyframe_b
-        tracking.settings.use_keyframe_selection = False
-        print("pick_keyframes %s - %s" % (keyframe_a,keyframe_b))
-    @classmethod
-    def poll(cls, context):
-        return (context.area.spaces.active.clip is not None)
-        
-    def execute(self, context):
-        clip = context.area.spaces.active.clip
-        try:
-            tracking = clip.tracking
-            tracks = tracking.tracks
-            start = tracking.reconstruction.cameras[0].frame
-            end   = tracking.reconstruction.cameras[-1].frame
-        except:
-            return {'CANCELED'}
-        self.pick_keyframes(context)
-        return {'FINISHED'}
-
-class OP_Tracking_refine_solution(Operator):
-    """Set track weight by error and solve camera motion"""
-    bl_idname = "tracking.refine_solution"  
-    bl_label = "Refine"
-    bl_options = {"UNDO"}
-    
-    @classmethod
-    def poll(cls, context):
-        return (context.area.spaces.active.clip is not None)
-        
-    def execute(self, context):
-        error = context.window_manager.TrackingTargetError
-        smooth = context.window_manager.TrackingSmooth
-        clip = context.area.spaces.active.clip
-        try:
-            tracking = clip.tracking
-            tracks = tracking.tracks
-            winx = float(clip.size[0])
-            winy = float(clip.size[1])
-            aspy =  1.0 / tracking.camera.pixel_aspect
-            start = tracking.reconstruction.cameras[0].frame
-            end   = tracking.reconstruction.cameras[-1].frame
-        except:
-            return {'CANCELED'}
-        
-        marker_position = Vector()
-        
-        for frame in range(start, end):
-            camera = tracking.reconstruction.cameras.find_frame(frame)
-            if camera is not None:
-                imat = camera.matrix.inverted()
-                projection_matrix = imat.transposed()
-            else:
-                continue
-            
-            for track in tracking.tracks:
-                marker = track.markers.find_frame(frame)
-                if marker is None:
-                    continue
-                    
-                # weight incomplete tracks on start and end
-                if frame > start + smooth and frame < end - smooth:
-                    for m in track.markers:
-                        if not m.mute:
-                            tstart = m.frame
-                            break
-                    for m in reversed(track.markers):
-                        if not m.mute:
-                            tend = m.frame
-                            break
-                    dt = min(0.5 * (tend - tstart), smooth)
-                    if dt > 0:
-                        t0 = min(1.0, (frame - tstart) / dt)
-                        t1 = min(1.0, (tend - frame) / dt)
-                        tw = min(t0, t1)
-                    else:
-                        tw = 0.0
-                else:
-                    tw = 1.0
-                    
-                reprojected_position = track.bundle * projection_matrix
-                if reprojected_position.z == 0:
-                    track.weight = 0
-                    track.keyframe_insert("weight", frame=frame)
-                    continue
-                reprojected_position = reprojected_position / -reprojected_position.z * tracking.camera.focal_length_pixels
-                reprojected_position = Vector((tracking.camera.principal[0] + reprojected_position[0],tracking.camera.principal[1] * aspy + reprojected_position[1], 0))
-                
-                marker_position[0] = (marker.co[0] + track.offset[0]) * winx
-                marker_position[1] = (marker.co[1] + track.offset[1]) * winy * aspy
-                
-                dp = marker_position - reprojected_position
-                if dp.length == 0:
-                    track.weight = 1.0
-                else:
-                    track.weight = min(1.0, tw * error / dp.length)
-                track.keyframe_insert("weight", frame=frame)
-            
-            
-        bpy.ops.clip.solve_camera()
-        print("Solve error %.2f" % (tracking.reconstruction.average_error))
-        return{'FINISHED'}
-        
-class OP_Tracking_reset_solution(Operator):
-    """Reset track weight and solve camera motion"""
-    bl_idname = "tracking.reset_solution"  
-    bl_label = "Reset"
-    bl_options = {"UNDO"}
-    
-    @classmethod
-    def poll(cls, context):
-        return (context.area.spaces.active.clip is not None)
-    
-    def execute(self, context):
-        clip = context.area.spaces.active.clip
-        try:
-            tracking = clip.tracking
-            tracks = tracking.tracks
-            start = tracking.reconstruction.cameras[0].frame
-            end   = tracking.reconstruction.cameras[-1].frame
-        except:
-            return {'CANCELED'}
-        for frame in range(start, end):
-            camera = tracking.reconstruction.cameras.find_frame(frame)
-            if camera is None:
-                continue
-            for track in tracking.tracks:
-                marker = track.markers.find_frame(frame)
-                if marker is None:
-                    continue
-                track.weight = 1.0
-                track.keyframe_insert("weight", frame=frame)       
-        bpy.ops.clip.solve_camera()
-        print("Solve error %.2f" % (tracking.reconstruction.average_error))
-        return{'FINISHED'}
 
 class OP_Tracking_auto_tracker(Operator):
     """Autotrack. Esc to cancel."""
@@ -575,21 +392,7 @@ class OP_Tracking_auto_tracker(Operator):
         if (((not props.track_backwards) and current_frame >= scene.frame_end) or
             (props.track_backwards and current_frame <= scene.frame_start)):
             self.cancel(context)
-            print("Reached scene end, now solving if enabled")
-            if props.auto_solve:
-                # pick keyframes from longest tracks as reconstruction basis
-                t = time.time()
-                bpy.ops.tracking.pick_frames()
-                print("pick_frames :%.2f seconds" % (time.time()-t)) 
-                # first solve as usual
-                t = time.time()
-                bpy.ops.tracking.reset_solution()
-                print("reset_solution :%.2f seconds" % (time.time()-t)) 
-                # then refine
-                if props.auto_refine:
-                    t = time.time()
-                    bpy.ops.tracking.refine_solution()
-                    print("refine_solution :%.2f seconds" % (time.time()-t)) 
+            print("Reached scene end")
             return {'FINISHED'}
             
         print("Tracking frame %s" % (scene.frame_current))
@@ -621,10 +424,10 @@ class OP_Tracking_auto_tracker(Operator):
             self.track_frames_backward()
         else:
             self.track_frames_forward()
-   
+        
         # setup a timer to broadcast a TIMER event to force modal to re-run as fast as possible (not waiting for any mouse or keyboard event) 
         self.start_timer(context)
-        print("modal end :%s" % (self.limits))
+        
         self.limits += 1
         return {'RUNNING_MODAL'}
        
@@ -745,17 +548,7 @@ class AutotrackerSettings(PropertyGroup):
             items=list_items
             )
     
-    auto_solve = BoolProperty(
-            name = "Solve",
-            description="Automatically solve after tracking",
-            default=True
-            )
     
-    auto_refine = BoolProperty(
-            name = "Refine",
-            description="Automatically refine after solving",
-            default=True
-            )
 # UI CREATION #
 class AutotrackerPanel(Panel):
     """Creates a Panel in the Render Layer properties window"""
@@ -807,53 +600,15 @@ class AutotrackerPanel(Panel):
         row = layout.row(align=True)
         row.prop(wm.autotracker_props, "placement_list")
             
-        row = layout.row(align=True)
-        row.prop(wm.autotracker_props, "auto_solve")
         
-        row = layout.row(align=True)
-        row.prop(wm.autotracker_props, "auto_refine")
 
 """
     NOTE:
     All size properties are in percent of clip size, so presets does not depends on clip size
-"""
-class RefineMotionTrackingPanel(Panel):
-    bl_label = "Refine solution"
-    bl_space_type = "CLIP_EDITOR"
-    bl_region_type = "TOOLS"
-    bl_category = "Solve"
-    
-    @classmethod
-    def poll(cls, context):
-        return (context.area.spaces.active.clip is not None) 
-    
-    def draw(self, context):
-        layout = self.layout
-        box = layout.box()
-        row = box.row(align=True)
-        row.label("Refine")
-        row = box.row(align=True)
-        row.prop(context.window_manager, "TrackingTargetError", text="Target error")
-        row = box.row(align=True)
-        row.prop(context.window_manager, "TrackingSmooth", text="Smooth transition")
-        row = box.row(align=True)
-        row.operator("tracking.refine_solution")
-        row.operator("tracking.reset_solution")
-
-                       
+"""               
 # REGISTER BLOCK #
 def register():
     bpy.utils.register_class(AutotrackerSettings)
-    WindowManager.TrackingTargetError = FloatProperty(
-        name="error", 
-        description="Refine motion track target error", 
-        default=0.3, 
-        min=0.01)
-    WindowManager.TrackingSmooth = FloatProperty(
-        name="Smooth transition", 
-        description="Smooth weight transition on start and end of incomplete tracks", 
-        default=25, 
-        min=1)
     WindowManager.autotracker_props = \
         PointerProperty(type=AutotrackerSettings)
     bpy.utils.register_module(__name__)  
@@ -862,8 +617,6 @@ def register():
 def unregister():
     bpy.utils.unregister_class(AutotrackerSettings)
     bpy.utils.unregister_module(__name__)   
-    del WindowManager.TrackingTargetError
-    del WindowManager.TrackingSmooth
     del WindowManager.autotracker_props
 
 if __name__ == "__main__":
