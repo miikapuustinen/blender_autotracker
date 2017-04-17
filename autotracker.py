@@ -102,7 +102,7 @@ class GlDrawOnScreen():
 def draw_callback(self, context):
     print("draw_callback : %s" % (self.progress))
     self.gl.ProgressBar(10, 24, 200, 16, self.start, self.progress)
-    self.gl.String(str(int(100*abs(self.progress)))+"%", 14, 28, 10, self.gl.white)
+    self.gl.String(str(int(100*abs(self.progress)))+"% ESC to cancel", 14, 28, 10, self.gl.white)
     
 
 class OP_Tracking_auto_tracker(Operator):
@@ -387,8 +387,11 @@ class OP_Tracking_auto_tracker(Operator):
         else:
             end = scene.frame_end
             total = end - self.start_frame
-        self.progress = (current_frame-self.start_frame)/total
-        
+        if total > 0:
+            self.progress = (current_frame-self.start_frame)/total
+        else:
+            self.progress = 0
+            
         if (((not props.track_backwards) and current_frame >= scene.frame_end) or
             (props.track_backwards and current_frame <= scene.frame_start)):
             self.cancel(context)
@@ -507,7 +510,7 @@ class AutotrackerSettings(PropertyGroup):
     small_tracks = IntProperty(
             name="Minimum track length",
             description="Delete tracks shortest than this number of frames.",
-            default=50,
+            default=25,
             min=1,
             max=1000
             )
