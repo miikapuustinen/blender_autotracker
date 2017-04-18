@@ -218,13 +218,14 @@ class OP_Tracking_auto_tracker(Operator):
     # AUTOTRACK FRAMES
     def track_frames_backward(self):
         t = time.time()
-        res = bpy.ops.clip.track_markers(backwards=True, sequence=True)
+        res = bpy.ops.clip.track_markers('INVOKE_DEFAULT', backwards=True, sequence=True)
         print("track_frames_backward %.2f seconds %s" % (time.time()-t, res))
         return res
         
     def track_frames_forward(self):
+        # run in her own modal context so it does show progress
         t = time.time()
-        res = bpy.ops.clip.track_markers(backwards=False, sequence=True)
+        res = bpy.ops.clip.track_markers('INVOKE_DEFAULT', backwards=False, sequence=True)
         print("track_frames_forward %.2f seconds %s" % (time.time()-t, res))
         return res
     
@@ -391,24 +392,27 @@ class OP_Tracking_auto_tracker(Operator):
         return frame_start, frame_end, frame_duration
         
     def modal(self, context, event):
-        # prevent TIMER event while running
-        print("modal start:%s %s" % (self.limits, event.type))
         
         if event.type in {'ESC'}:
             print("Cancelling")
             self.cancel(context)
             return {'FINISHED'}
         
-        if event.type not in {'TIMER'}:
+        # dont run this modal while tracking operator runs
+        if event.type not in {'TIMER'} or context.scene.frame_current != self.next_frame:
             return {'PASS_THROUGH'}
         
+        # prevent TIMER event while running
         self.stop_timer(context)
+        
         scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
         frame_start, frame_end, frame_duration = self.get_frame_range(context)
         
         if props.track_backwards:
+            self.next_frame = scene.frame_current - props.frame_separation
             total = self.start_frame - frame_start
         else:
+            self.next_frame = scene.frame_current + props.frame_separation
             total = frame_end - self.start_frame
         
         if total > 0:
@@ -424,75 +428,43 @@ class OP_Tracking_auto_tracker(Operator):
             
         print("Tracking frame %s" % (scene.frame_current))
         
-        if self.is_ready:
-            # Remove bad tracks before adding new ones
-            if self.limits >= props.frame_separation:
-                self.limits = 0
-                self.remove_small(context)
-                self.remove_jumping(context)
-            
-            # add new tracks
-            # if current_frame % props.frame_separation == 0 or self.limits == 0:
-            if self.limits == 0:
-                self.auto_features(context)
+        # Remove bad tracks before adding new ones
+        self.remove_small(context)
+        self.remove_jumping(context)
+    
+        # add new tracks
+        # if current_frame % props.frame_separation == 0 or self.limits == 0:
+        self.auto_features(context)
 
-            # Select active trackers for tracking
-            active_tracks = self.select_active_tracks(context)
-            
-            # finish if there is nothing to track
-            if len(active_tracks) == 0:
-                print("No new tracks created. Doing nothing.")
-                self.progress = 0
-                bpy.types.SpaceClipEditor.draw_handler_remove(self._handle, 'WINDOW')
-                self.show_tracks(context)    
-                self.cancel(context)
-                return {'FINISHED'}
-            
-            # setup frame_limit on tracks
-            for track in active_tracks:
-                track.frames_limit = 0
-            active_tracks[0].frames_limit = props.frame_separation
-            
-            self.limits += 1
-            
+        # Select active trackers for tracking
+        active_tracks = self.select_active_tracks(context)
+        
+        # finish if there is nothing to track
+        if len(active_tracks) == 0:
+            print("No new tracks created. Doing nothing.")
+            self.progress = 0
+            bpy.types.SpaceClipEditor.draw_handler_remove(self._handle, 'WINDOW')
+            self.show_tracks(context)    
+            self.cancel(context)
+            return {'FINISHED'}
+        
+        # setup frame_limit on tracks
+        for track in active_tracks:
+            track.frames_limit = 0
+        active_tracks[0].frames_limit = props.frame_separation
+        
         # Forwards or backwards tracking
         if props.track_backwards:
             res = self.track_frames_backward()
         else:
             res = self.track_frames_forward()
             
-        # when restarting wait for first tracking  modal op ends up
-        # calling the op while allready tracking lead to res = 'CANCELLED' result
-        self.is_ready = res == {'FINISHED'}
-        
         # setup a timer to broadcast a TIMER event to force modal to re-run as fast as possible (not waiting for any mouse or keyboard event) 
         self.start_timer(context)
-        print("modal end :%s" % (self.limits))
+        print("modal end")
         
         return {'RUNNING_MODAL'}
-    
-    def start_tracking(self, context):
-        """
-            subsequent calls to track_markers operator not running modal 
-            lead to tracking not showing frame_limits
-            so re-start tracking with a modal operator call if we allready have active markers
-        """
-        scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
-        self.is_ready = True
-        
-        active_tracks = self.get_active_tracks(context)
-        if len(active_tracks) == 0:
-            self.auto_features(context)
-            
-        active_tracks = self.select_active_tracks(context)    
-        if len(active_tracks) > 0:
-            # flag to wait for this modal to end before changing anything on tracks
-            self.is_ready = False
-            if props.track_backwards:
-                bpy.ops.clip.track_markers('INVOKE_DEFAULT', backwards=True, sequence=True)
-            else:
-                bpy.ops.clip.track_markers('INVOKE_DEFAULT', backwards=False, sequence=True)
-        
+      
     def invoke(self, context, event):
         print("invoke %s" % (event.type))
         scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
@@ -502,8 +474,7 @@ class OP_Tracking_auto_tracker(Operator):
         self.progress = 0
         
         # keep track of frame at witch we should detect new features and filter tracks
-        self.limits = 0
-        self.start_tracking(context)
+        self.next_frame = scene.frame_current
         
         # draw progress
         args = (self, context)
