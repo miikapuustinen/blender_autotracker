@@ -99,6 +99,7 @@ class GlDrawOnScreen():
         self.Rectangle(x, y, x1, y1, self.white, width=1)
         
 def draw_callback(self, context):
+    #print("draw_callback : %s" % (self.progress))
     self.gl.ProgressBar(10, 24, 200, 16, self.start, self.progress)
     self.gl.String(str(int(100*abs(self.progress)))+"% ESC to Cancel", 14, 28, 10, self.gl.white)
     
@@ -258,7 +259,7 @@ class OP_Tracking_auto_tracker(Operator):
             TODO: use statistic here to make filtering more efficient
             last : last frame number
             frame: current frame number
-            return mean distance error normalized in screen space
+            return mean pixel distance error
         """
         scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
         nbtracks = 0
@@ -292,7 +293,7 @@ class OP_Tracking_auto_tracker(Operator):
             if track.hide or track.lock:
                 continue
             if len(track.markers) > 1:
-                marker = track.markers.find_frame(last_frame)
+                marker = track.markers.find_frame(current_frame)
                 if marker is None and self.find_track_length(track) < props.small_tracks:
                     to_delete.append(track)
         deleted_tracks = len(to_delete)
@@ -390,8 +391,8 @@ class OP_Tracking_auto_tracker(Operator):
             self.cancel(context)
             return {'FINISHED'}
         
-        frame_start, frame_end, frame_duration = self.get_frame_range(context)
         scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
+        frame_start, frame_end, frame_duration = self.get_frame_range(context)
         
         if (((not props.track_backwards) and current_frame >= frame_end) or
             (props.track_backwards and current_frame <= frame_start)):
@@ -400,12 +401,12 @@ class OP_Tracking_auto_tracker(Operator):
             return {'FINISHED'}
         
         # dont run this modal while tracking operator runs
+        # Known issue, youll have to keep ESC pressed
         if event.type not in {'TIMER'} or context.scene.frame_current != self.next_frame:
             return {'PASS_THROUGH'}
         
         # prevent own TIMER event while running
         self.stop_timer(context)
-        
         
         if props.track_backwards:
             self.next_frame = scene.frame_current - props.frame_separation
@@ -456,6 +457,12 @@ class OP_Tracking_auto_tracker(Operator):
     def invoke(self, context, event):
         scene = context.scene
         frame_start, frame_end, frame_duration = self.get_frame_range(context)
+        
+        if scene.frame_current > frame_end:
+            scene.frame_current = frame_end
+        elif scene.frame_current < frame_start:
+            scene.frame_current = frame_start
+        
         self.start_frame = scene.frame_current
         self.start = (scene.frame_current-frame_start) / (frame_duration)
         self.progress = 0
@@ -491,7 +498,11 @@ class OP_Tracking_auto_tracker(Operator):
         self.stop_timer(context)
         self.show_tracks(context)  
         bpy.types.SpaceClipEditor.draw_handler_remove(self._draw_handler, 'WINDOW')
-              
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.area.spaces.active.clip is not None) 
+    
 class AutotrackerSettings(PropertyGroup):
     """Create properties"""
     df_margin = FloatProperty(
@@ -584,7 +595,11 @@ class AutotrackerPanel(Panel):
     bl_space_type = 'CLIP_EDITOR'
     bl_region_type = 'TOOLS'
     bl_category = "Track"
-
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.area.spaces.active.clip is not None) 
+    
     # Draw UI
     def draw(self, context):
         layout = self.layout
