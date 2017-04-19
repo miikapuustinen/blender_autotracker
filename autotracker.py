@@ -391,6 +391,7 @@ class OP_Tracking_auto_tracker(Operator):
             return {'FINISHED'}
         
         frame_start, frame_end, frame_duration = self.get_frame_range(context)
+        scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
         
         if (((not props.track_backwards) and current_frame >= frame_end) or
             (props.track_backwards and current_frame <= frame_start)):
@@ -405,7 +406,6 @@ class OP_Tracking_auto_tracker(Operator):
         # prevent own TIMER event while running
         self.stop_timer(context)
         
-        scene, props, clip, tracks, current_frame, last_frame = self.get_vars_from_context(context)
         
         if props.track_backwards:
             self.next_frame = scene.frame_current - props.frame_separation
