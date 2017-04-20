@@ -1,31 +1,30 @@
-##Blender Autotracker addon
+## Blender Autotracker addon
 ![test tag](https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_screenshot.jpg)
-###What is it?
+### What is it?
 Python addon which introduces autotracking for Blender motion tracking. It automates marker creationg and feature detection, as well tries to cut down amount of bad tracks. It is more suitable for easier shots or can be used in conjunction with supervised tracking.
 
-###How to install?
+### How to install?
 Drop autotracker.py to blender/scripts/addons/ folder or use User Preferences --> Add-ons Install from file to install.
 
-###How to use?
+### How to use?
 1. Autotrack
-2. Filter tracks
+2. Clean up tracks
 3. Solve
 
-
-###Settings
+### Settings
 Motion tracking --> Autotrack panel  
 ![alt tag](https://github.com/miikapuustinen/blender_autotracker/blob/master/images/autotracker_interface.jpg)
 * Autotrack: Starts Autotracking.
 * Track Backwards: When enabled autotracker tracks backwards.
-* New Marker Threshold: How Close Are New Markers Allowed To Be Created (0-1).
-* Frame Separation: Make New Markers Every Nth Frame
-* Jump Threshold: How Much Tracks Can Jump Before They Are Muted (0-1).
+* Minimum Track Length: Delete tracks shorter than this number of frames (0 = Keep all tracks).
+* New Marker Threshold: Threshold how near new features can appear during autotracking.
+* Frame Separation: How often new features are generated.
+* Jump Threshold: Distance how much a marker can travel before it's considered to be a bad track and cut (Factor relative to mean motion). A new track is added.
 
-####Detect Features Settings
-These Settings Are The Same As Marker --> Detect Features.
-* Margin: How Far From Edges New Markers Can Be Created.
-* Threshold: Spacing For New Marker Creation
-* Distance: How Far To Each Other New Markers Can Be Created
-* Use Grease Pencil to mask areas to track: Whole frame, Inside Grease Pencil or Outside Grease Pencil.
+#### Detect Features Settings
+* Margin: Margin how far from edges new features need to be when created.
+* Threshold: Theshold level to consider to be good enough for tracking.
+* Distance: Minimum distance accepted between new features.
+* Feature Placement: Use Grease Pencil to mask areas to track. Whole frame, Inside Grease Pencil or Outside Grease Pencil.
 
 #### Version 0.0.9
