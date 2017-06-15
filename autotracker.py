@@ -20,7 +20,7 @@ bl_info = {
     "name": "Autotrack",
     "author": "Miika Puustinen, Matti Kaihola, Stephen Leger",
     "version": (0, 1, 0),
-    "blender": (2, 79, 0),
+    "blender": (2, 78, 0),
     "location": "Movie clip Editor > Tools Panel > Autotrack",
     "description": "Motion Tracking with automatic feature detection.",
     "warning": "",
